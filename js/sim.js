@@ -14,11 +14,14 @@
 
   // atk scales capture pressure + damage dealt, def scales holding pressure +
   // damage resisted, cost is the price of a division (upkeep scales with it).
+  // Balance (2026-09-20, 32-war study): the centre seats (Germany, Italy) have ~3 neighbours and far more
+  // front to hold than the corners, so they start with more divisions and better troops; Poland's horde is
+  // cheap but clearly weaker per division. Check changes with: node tools/balance.js --seeds 32
   G.COUNTRIES = [
-    { name: 'France',  trait: 'Fortified', atk: 1.0,  def: 1.3, speed: 0.95, cost: 100, capital: 'Paris',  color: '#4a78d0', cap: [0.24, 0.42], flag: { dir: 'v', stripes: ['#0055A4', '#FFFFFF', '#EF4135'] } },
-    { name: 'Germany', trait: 'Elite',     atk: 1.3,  def: 1.1, speed: 1.1,  cost: 140, start: 9, capital: 'Berlin', color: '#767b84', cap: [0.50, 0.31], flag: { dir: 'h', stripes: ['#111111', '#DD0000', '#FFCE00'] } },
-    { name: 'Poland',  trait: 'Horde',     atk: 0.85, def: 0.9, speed: 1.0,  cost: 65,  capital: 'Warsaw', color: '#d05a74', cap: [0.77, 0.45], flag: { dir: 'h', stripes: ['#FFFFFF', '#DC143C'] } },
-    { name: 'Italy',   trait: 'Swift',     atk: 0.95, def: 0.9, speed: 1.3,  cost: 85,  capital: 'Rome',   color: '#45a366', cap: [0.50, 0.74], flag: { dir: 'v', stripes: ['#009246', '#FFFFFF', '#CE2B37'] } },
+    { name: 'France',  trait: 'Fortified', atk: 1.0,  def: 1.3, speed: 0.95, cost: 110, capital: 'Paris',  color: '#4a78d0', cap: [0.24, 0.42], flag: { dir: 'v', stripes: ['#0055A4', '#FFFFFF', '#EF4135'] } },
+    { name: 'Germany', trait: 'Elite',     atk: 1.5,  def: 1.3, speed: 1.1,  cost: 130, start: 12, capital: 'Berlin', color: '#767b84', cap: [0.50, 0.31], flag: { dir: 'h', stripes: ['#111111', '#DD0000', '#FFCE00'] } },
+    { name: 'Poland',  trait: 'Horde',     atk: 0.75, def: 0.8, speed: 1.0,  cost: 70,  capital: 'Warsaw', color: '#d05a74', cap: [0.77, 0.45], flag: { dir: 'h', stripes: ['#FFFFFF', '#DC143C'] } },
+    { name: 'Italy',   trait: 'Swift',     atk: 1.05, def: 1.0, speed: 1.3,  cost: 80,  start: 10, capital: 'Rome',   color: '#45a366', cap: [0.50, 0.74], flag: { dir: 'v', stripes: ['#009246', '#FFFFFF', '#CE2B37'] } },
   ];
 
   // Unit types multiply the country's stats. atk = capture pressure, def = holding
@@ -588,6 +591,13 @@
       const r = rnd();
       G.aiGoal[k] = r > 0.92 && !G.jets.some(j => j.k === k) ? 'jet' : r < 0.15 && count('artillery') < 2 ? 'artillery' : r < 0.24 && count('barracks') < (G.units.some(u => u.k === k && u.sup < 2) ? 3 : 1) ? 'barracks' : r < 0.4 ? 'guard' : 'infantry';
     }
+    // Don't sit on the money waiting for something out of reach: if the goal is more than
+    // ~20 s of income away, or the country is being pushed back, buy infantry now instead.
+    {
+      const g = G.aiGoal[k], price = g === 'jet' ? G.JET.cost : G.UNIT_TYPES[g] ? G.unitCost(k, g) : G.BUILDINGS[g].cost;
+      const army = G.units.reduce((n, u) => n + (u.k === k), 0), hardPressed = army < 8 || G.occupy[k] > 0;
+      if (g !== 'infantry' && (price - G.money[k] > G.income[k] * 20 || (hardPressed && G.UNIT_TYPES[g] === undefined))) G.aiGoal[k] = 'infantry';
+    }
     const goal = G.aiGoal[k];
     if (goal === 'jet') { if (G.buyJet(k)) G.aiGoal[k] = null; return; }
     if (G.UNIT_TYPES[goal]) { if (G.recruit(k, goal)) G.aiGoal[k] = null; return; }
@@ -697,12 +707,7 @@
   // of piling everything onto the closest enemy.
   function think(u) {
     const rnd = G.rnd, home = G.caps[u.k], dist = G.supDist[u.k];
-    const walk = t => {   // far away: go one province at a time
-      const d = hyp(t.x - u.x, t.y - u.y) || 1, s = Math.min(d, PS * 1.4);
-      const sx = u.x + (t.x - u.x) / d * s, sy = u.y + (t.y - u.y) / d * s, step = d > PS * 1.8 && G.landAt(sx, sy) && G.provinces.get(G.provAt(sx, sy));
-      const go = step || t;
-      G.holdProvince([u], go);
-    };
+    const go = p => { if (u.holdIds.length !== 1 || u.holdIds[0] !== p.id) G.holdProvince([u], p); };   // (pathfinding gets it there; units sharing a province line its edge together)
     if (u.sup === 0) {   // cut off: fight back toward the nearest supplied ground
       let best = null, bd = Infinity;
       for (const p of G.provinces.values()) {
@@ -710,30 +715,34 @@
         const d = hyp(p.x - u.x, p.y - u.y);
         if (d < bd) { bd = d; best = p; }
       }
-      if (best) return walk(best);
+      if (best) return go(best);
     }
     if (hyp(u.x - home.x, u.y - home.y) < 450) {
       for (const o of G.units) {
         if (o.k === u.k || hyp(o.x - home.x, o.y - home.y) > 220) continue;
         const p = G.provinces.get(G.provAt(o.x, o.y));
-        if (p) return G.order(u, p.x, p.y, p.id);
+        if (p) return go(p);
       }
     }
-    const near = [];
-    for (const p of G.provinces.values()) {
-      if (G.ctlAt(u.k, p.x, p.y) >= 0.5) continue;
+    // Spread along the whole front like a drawn line: each stretch (enemy province touching
+    // ours) costs more the more of our divisions are already on it, so the army fans out
+    // roughly one per stretch - doubling up where the enemy is, or where a push would cut
+    // something off. The units on one stretch then line up along its edge.
+    const claims = new Map();
+    for (const o of G.units) if (o !== u && o.k === u.k && o.holdIds.length === 1) claims.set(o.holdIds[0], (claims.get(o.holdIds[0]) || 0) + 1);
+    let best = null, bs = Infinity;
+    for (const p of G.frontProvinces(u.k)) {
       let d = hyp(p.x - u.x, p.y - u.y) * (p.terrain === 1 ? 1.3 : 1);
-      // thin enemy ground (a neck or the tip of a salient) is worth going for: taking it cuts things off
       const owner = G.provOwner[p.id];
-      let same = 0, reach = false;
+      let same = 0, reach = false, foes = 0;
       for (const a of p.adj) { if (owner >= 0 && G.provOwner[a] === owner) same++; if (G.provOwner[a] === u.k && levelOf(dist[a]) > 0) reach = true; }
-      if (owner >= 0 && same <= 2) d *= 0.7;
-      if (!reach) d *= 2.5;   // we could not supply a push there
-      near.push({ p, d });
+      for (const o of G.units) if (o.k !== u.k && (o.x - p.x) ** 2 + (o.y - p.y) ** 2 < (PS * 1.2) ** 2) foes++;
+      if (owner >= 0 && same <= 2) d *= 0.7;   // thin enemy ground: taking it cuts things off
+      if (!reach) d *= 2.5;                     // we could not supply a push there
+      const sc = d + PS * 1.1 * Math.max(0, (claims.get(p.id) || 0) - Math.min(2, foes) * 0.6) - (u.holdIds[0] === p.id ? 90 : 0) + rnd() * 50;
+      if (sc < bs) { bs = sc; best = p; }
     }
-    if (!near.length) return;
-    near.sort((a, b) => a.d - b.d);
-    walk(near[rnd() * Math.min(4, near.length) | 0].p);
+    if (best) go(best);
   }
 
   // prov = the province this order pushes into (-1: work it out from the target)
@@ -1090,7 +1099,7 @@
     if (!cells.length) {   // nothing hostile touches them: gather round the middle of the first
       const p = G.provinces.get(ids[0]), slots = [];
       for (let i = 0; i < n; i++) {
-        const r = 16 * Math.sqrt(i), a = i * 2.4;
+        const r = 30 * Math.sqrt(i), a = i * 2.4;   // loose, so a group waiting here doesn't pile into a knot
         let x = p.x + Math.cos(a) * r, y = p.y + Math.sin(a) * r;
         if (!G.landAt(x, y)) { x = p.x; y = p.y; }
         slots.push({ x, y, id: p.id });

@@ -169,7 +169,7 @@
   overlay.addEventListener('contextmenu', e => e.preventDefault());
 
   overlay.addEventListener('pointerdown', e => {
-    if (attract) return;
+    if (attract || (spectate && e.button !== 1)) return;
     if (replay && e.button !== 1) return;   // timelapse: look, don't touch (middle-drag still pans)
     if (ui.build) {   // placing a building: left places (shift keeps placing), right cancels
       if (e.button === 0 && ui.build === 'airmark') {
@@ -256,6 +256,7 @@
     if (k === 'tab') e.preventDefault();
     if (replay) { if (k === 'escape' || k === 'l') stopReplay(); else if (k === ' ') { e.preventDefault(); $('replay-play').click(); } return; }
     if (k === 'l') { if (!lockstep || ended) startReplay(); return; }   // (it pauses the game, so not during a network game)
+    if (spectate && !' 123l'.includes(k) && k !== 'escape') return;   // nothing to command while watching
     if (!e.ctrlKey && cardKey(k)) return;
     if (e.ctrlKey && k === 'a') { e.preventDefault(); for (const u of G.units) u.sel = u.k === G.player; updateSelPanel(); return; }
     if (k === ' ') { e.preventDefault(); setSpeed(speed ? 0 : lastSpeed); }
@@ -292,6 +293,7 @@
 
   function setPlayer(k, force) {
     if (G.dead[k] || (lockstep && !force)) return;   // in a network game your seat is fixed
+    if (spectate) { setSpectate(false); for (const u of G.units) if (u.k === k) u.retreat = 'stand'; }   // taking a country over mid-war
     G.player = k;
     for (const u of G.units) { u.sel = false; if (u.k === k) { u.hasTarget = false; u.prov = -1; } }
     ui.build = null;
@@ -603,6 +605,7 @@
       for (let i = G.effects.length - 1; i >= 0; i--) { const e = G.effects[i]; e.t += dt; if (e.t >= e.life) G.effects.splice(i, 1); }
       if (ui.flash && (ui.flash.t += dt) >= 0.45) ui.flash = null;
       if (attract) attractFrame(now);
+      else if (spectate) { if ((hudT -= dt) <= 0) { hudT = 0.2; handleEvents(); updateHud(true); } }
       else if ((hudT -= dt) <= 0) { hudT = 0.2; updateHud(); updateSelPanel(); updateEcon(); if (tut) tut.update(); }
     }
 
@@ -645,9 +648,21 @@
     ended = false; warned = false; $('endgame').hidden = true;
     chips.forEach(el => el.classList.remove('dead'));
     G.events.length = 0;
-    setPlayer(k, true);
+    setSpectate(k < 0);
+    if (k >= 0) setPlayer(k, true);
+    else { G.player = -1; for (const u of G.units) u.sel = false; chips.forEach(el => el.classList.remove('player')); goal.x = WORLD_W / 2; goal.y = WORLD_H / 2; goal.zoom = fit() * 1.1; }
   }
+  // spectating: all four countries are AI; the player only watches (and may take one over)
+  let spectate = false;
+  function setSpectate(on) {
+    spectate = on;
+    document.body.classList.toggle('spectate', on);
+    $('spectating').hidden = !on;
+    if (on) { ui.gaps = null; ui.supply = null; ui.build = null; ui.guardMode = false; }
+  }
+  $('home-watch').addEventListener('click', () => { newGame(Math.random() * 1e9 | 0, -1); closeMenu(); setSpeed(2, true); });
   function openHome() {
+    setSpectate(false);
     document.body.classList.add('home'); $('menu').hidden = false; showPanel('play');
     attract = true; G.player = -1;   // nobody is human: the AI fights it out as a backdrop
     for (const u of G.units) u.sel = false;
@@ -792,11 +807,12 @@
   const testLapse = new URLSearchParams(location.search).get('lapse');
   ui.showSupply = new URLSearchParams(location.search).has('supply');   // ?supply: start with the supply map on
   // test/deep links (?seed ?warm ?order ?lapse ?supply ?sp) skip the menu
-  const skipMenu = ['seed', 'warm', 'order', 'lapse', 'supply', 'sp', 'pause'].some(q => qs.has(q));
+  const skipMenu = ['seed', 'warm', 'order', 'lapse', 'supply', 'sp', 'pause', 'watch'].some(q => qs.has(q));
   $('menu').hidden = true;
   setSpeed(1);
   setPlayer(Math.max(0, G.dead.indexOf(false)));
-  if (qs.has('tutorial')) startTutorial();
+  if (qs.has('watch')) { newGame(+qs.get('seed') || 7, -1); if (qs.has('warm')) { for (let i = 0; i < +qs.get('warm') * 30; i++) { G.step(1 / 30); record(); } G.events = G.events.filter(e => e.type === 'capitulate'); G.effects.length = 0; } setSpeed(2, true); }   // ?watch: straight into spectating
+  else if (qs.has('tutorial')) startTutorial();
   else if (!skipMenu && !qs.has('host') && !qs.has('join')) openHome();
   else if (qs.has('host') || qs.has('join')) { document.body.classList.add('home'); $('menu').hidden = false; }
   if (testOrder) {

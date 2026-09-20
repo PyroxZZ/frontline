@@ -440,3 +440,10 @@ body.home #hud-top, body.home #econ, body.home #sel-panel, body.home #help { dis
 #paused b { color: #fff; letter-spacing: 0.14em; }
 #paused[hidden] { display: none; }
 body.home #paused { display: none; }
+
+/* ---------- spectating ---------- */
+body.spectate #econ, body.spectate #sel-panel, body.spectate #help { display: none; }
+#spectating { position: fixed; left: 50%; bottom: 14px; transform: translateX(-50%); padding: 7px 14px; border-radius: 9px; font-size: 12px; white-space: nowrap; color: rgba(255, 255, 255, 0.75); background: rgba(14, 20, 28, 0.94); border: 1px solid rgba(255, 255, 255, 0.14); pointer-events: none; }
+#spectating b { color: #f2c94c; letter-spacing: 0.14em; }
+#spectating[hidden] { display: none; }
+body.spectate #paused { bottom: 54px; }
