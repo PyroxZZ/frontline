@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Frontline</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<canvas id="map"></canvas>
+<canvas id="overlay"></canvas>
+
+<div id="hud-top">
+  <div id="brand" title="Back to the home page">FRONTLINE</div>
+  <div id="countries"></div>
+  <div id="speed">
+    <button data-speed="0" title="Pause (Space)">❚❚</button>
+    <button data-speed="1" title="1">1×</button>
+    <button data-speed="2" title="2">2×</button>
+    <button data-speed="4" title="3">4×</button>
+  </div>
+</div>
+
+<div id="econ">
+  <div class="row"><span id="econ-flag" class="flag"></span><span id="econ-money"></span><span id="econ-income"></span></div>
+  <div id="fronts"></div>
+  <div id="card-title"></div>
+  <div id="card"></div>
+  <div id="card-tip" hidden></div>
+</div>
+
+<div id="sel-panel" hidden>
+  <div class="sel-row"><span id="sel-flag" class="flag"></span><span id="sel-text"></span><span class="bar"><span id="sel-bar"></span></span></div>
+</div>
+
+<div id="help">
+  <b>Left-drag</b> select &nbsp;·&nbsp; <b>Click a province</b> advance into it (<b>Shift</b>-click adds more) &nbsp;·&nbsp; <b>Right-drag</b> draw a line to hold &nbsp;·&nbsp; <b>Esc</b> deselect / cancel<br>
+  <b>Wheel</b> zoom &nbsp;·&nbsp; <b>WASD / middle-drag</b> pan &nbsp;·&nbsp; <b>Space</b> pause &nbsp;·&nbsp; hold an enemy <b>capital</b> to make them capitulate &nbsp;·&nbsp; <b>L</b> timelapse &nbsp;·&nbsp; click a country to play as it
+</div>
+
+<div id="toasts"></div>
+
+<div id="paused" hidden><b>PAUSED</b> &nbsp; arrows: where divisions are going &nbsp;&middot;&nbsp; <span style="color:#ff6a4d">red arrows</span>: what they attack &nbsp;&middot;&nbsp; &#9876; provinces under attack &nbsp;&middot;&nbsp; dotted red: units in combat &nbsp;&middot;&nbsp; you can still give orders</div>
+
+<div id="replay" hidden>
+  <button id="replay-play"></button>
+  <span id="replay-time"></span>
+  <input id="replay-bar" type="range" min="0" max="1000" value="0">
+  <button id="replay-close">Close</button>
+</div>
+
+<div id="endgame" hidden>
+  <div class="card">
+    <div id="end-title"></div>
+    <div id="end-text"></div>
+    <div class="row"><button id="end-watch">Keep watching</button><button id="end-lapse">Watch timelapse</button><button id="end-new">New war</button></div>
+  </div>
+</div>
+
+<div id="net-wait" hidden>Waiting for another player...</div>
+
+<div id="menu" hidden>
+  <div id="home-left">
+    <div id="menu-title">FRONTLINE</div>
+    <div id="home-tag">Push the line. Cut their supply. Take the capital.</div>
+    <nav id="home-nav">
+      <button data-panel="play">Play</button>
+      <button data-panel="tutorial">Tutorial</button>
+      <button data-panel="multi">Multiplayer</button>
+      <button data-panel="controls">Controls</button>
+    </nav>
+    <div id="home-foot">A war is being fought behind this menu - every map is different.</div>
+  </div>
+  <div id="home-panel">
+    <section id="panel-play">
+      <h2>Choose your country</h2>
+      <div id="pick-country"></div>
+      <p class="small">Everyone is at war with everyone. Hold an enemy capital for 20 seconds and that country capitulates to you.</p>
+    </section>
+    <section id="panel-tutorial" hidden>
+      <h2>Tutorial</h2>
+      <p>About five minutes, played in a real game as France. The other countries stay asleep while you learn:</p>
+      <ul><li>moving the camera and selecting divisions</li><li>attacking provinces and widening an attack</li><li>stances and holding the front</li><li>recruiting, supply and how a war is won</li></ul>
+      <button id="tut-start" class="big">Start the tutorial</button>
+    </section>
+    <section id="menu-main" hidden>
+      <h2>Multiplayer</h2>
+      <p class="small" style="margin-top:0">Peer to peer, up to four players - no server, no account. Empty seats are played by the AI.</p>
+      <button id="menu-host">Host a game</button>
+      <div class="join"><input id="join-code" maxlength="8" placeholder="ROOM CODE" autocomplete="off" spellcheck="false"><button id="menu-join">Join</button></div>
+      <label class="small"><input id="menu-local" type="checkbox"> same-PC test (two windows of this browser, no internet)</label>
+      <div id="menu-status"></div>
+    </section>
+    <section id="menu-lobby" hidden>
+      <h2>Room <span id="lobby-code"></span></h2>
+      <div id="lobby-seats"></div>
+      <div id="lobby-note" class="small"></div>
+      <button id="lobby-start" class="big"></button>
+    </section>
+    <section id="panel-controls" hidden>
+      <h2>Controls</h2>
+      <table>
+        <tr><td>Left-drag</td><td>select divisions</td></tr>
+        <tr><td>Click a province</td><td>attack / move into it &nbsp;(<b>Shift</b> adds more provinces)</td></tr>
+        <tr><td>Right-drag</td><td>draw a line for the selection to hold</td></tr>
+        <tr><td>Q E R T</td><td>stance: hold, probe, attack, assault</td></tr>
+        <tr><td>F G H &nbsp;/&nbsp; J</td><td>fall back: never, when weak, outnumbered &nbsp;/&nbsp; stop</td></tr>
+        <tr><td>Z X C V</td><td>exploit, hold the front, concentrate, straight in</td></tr>
+        <tr><td>Nothing selected</td><td>the same keys recruit and build (see the card, bottom left)</td></tr>
+        <tr><td>Tab &nbsp;/&nbsp; L</td><td>supply map &nbsp;/&nbsp; timelapse</td></tr>
+        <tr><td>Wheel, WASD, middle-drag</td><td>zoom and pan</td></tr>
+        <tr><td>Space, 1 2 3</td><td>pause, game speed</td></tr>
+        <tr><td>Esc</td><td>deselect / cancel</td></tr>
+      </table>
+    </section>
+  </div>
+</div>
+
+<div id="tut" hidden>
+  <div id="tut-step"></div>
+  <div id="tut-title"></div>
+  <div id="tut-text"></div>
+  <div class="row"><button id="tut-exit">Exit tutorial</button><button id="tut-next">Skip step</button></div>
+</div>
+
+<div id="fatal" hidden></div>
+
+<script src="js/sim.js"></script>
+<script src="js/net.js"></script>
+<script src="js/render.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>
